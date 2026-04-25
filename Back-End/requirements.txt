@@ -3,3 +3,10 @@ uvicorn
 firebase-admin
 pydantic
 python-dotenv
+langchain
+langchain-community
+langchain-text-splitters
+langchain-google-genai
+paddleocr
+paddlepaddle
+requests

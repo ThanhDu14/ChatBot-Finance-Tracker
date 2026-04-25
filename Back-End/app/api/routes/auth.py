@@ -1,12 +1,22 @@
-from fastapi import APIRouter, HTTPException, Depends
+"""
+routes/auth.py
+--------------
+Dinh nghia cac API endpoint cho Authentication.
+Tat ca business logic duoc uy quyen cho auth_service.
+"""
+
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-import firebase_admin
-from firebase_admin import auth, credentials
-import os
+from typing import Optional
+
+from app.services.auth_service import verify_id_token, revoke_refresh_tokens
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-# Models
+
+# ─────────────────────────────────────────────
+#  Request / Response schemas
+# ─────────────────────────────────────────────
 class LoginRequest(BaseModel):
     id_token: str
 
@@ -14,52 +24,45 @@ class LoginResponse(BaseModel):
     message: str
     user_id: str
     email: str
-    name: str | None = None
-    picture: str | None = None
+    name: Optional[str] = None
+    picture: Optional[str] = None
 
-# API Endpoint
+class LogoutRequest(BaseModel):
+    user_id: Optional[str] = None  # Truyen uid neu muon revoke token phia server
+
+
+# ─────────────────────────────────────────────
+#  POST /auth/login
+# ─────────────────────────────────────────────
 @router.post("/login", response_model=LoginResponse)
 async def login_with_google(request: LoginRequest):
     """
-    Verify Google ID token sent from frontend and log the user in.
+    Xac thuc Firebase ID token gui len tu frontend.
+    Tra ve thong tin user neu token hop le.
     """
-    try:
-        # Verify the ID token using Firebase Admin SDK
-        decoded_token = auth.verify_id_token(request.id_token)
-        
-        user_id = decoded_token.get("uid")
-        email = decoded_token.get("email")
-        name = decoded_token.get("name")
-        picture = decoded_token.get("picture")
+    user = verify_id_token(request.id_token)
 
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token: No UID found")
+    return LoginResponse(
+        message="Successfully logged in",
+        user_id=user.user_id,
+        email=user.email,
+        name=user.name,
+        picture=user.picture,
+    )
 
-        # Here you could check if the user exists in your own database,
-        # create a session cookie, or issue your own JWT if needed.
-        # For now, we simply return success.
 
-        return LoginResponse(
-            message="Successfully logged in",
-            user_id=user_id,
-            email=email,
-            name=name,
-            picture=picture
-        )
-
-    except auth.InvalidIdTokenError:
-        raise HTTPException(status_code=401, detail="Invalid ID token")
-    except auth.ExpiredIdTokenError:
-        raise HTTPException(status_code=401, detail="Expired ID token")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
-
+# ─────────────────────────────────────────────
+#  POST /auth/logout
+# ─────────────────────────────────────────────
 @router.post("/logout")
-async def logout():
+async def logout(request: LogoutRequest = LogoutRequest()):
     """
-    Handle user logout on the backend.
-    In a stateless JWT setup (like Firebase), the frontend handles token deletion.
-    If using session cookies, this endpoint would clear them.
+    Xu ly logout phia server.
+    - Neu truyen user_id: thu hoi tat ca refresh token (force logout).
+    - Neu khong truyen: chi tra ve thanh cong (frontend tu xoa token).
     """
-    # Perform any backend cleanup (e.g. revoking tokens, clearing cookies) here.
+    if request.user_id:
+        revoke_refresh_tokens(request.user_id)
+        return {"message": "Successfully logged out and tokens revoked"}
+
     return {"message": "Successfully logged out"}

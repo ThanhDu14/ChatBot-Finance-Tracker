@@ -1,14 +1,75 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, X, Send, User } from 'lucide-react';
+import { Bot, X, Send, User, Image as ImageIcon, Paperclip, Check, Trash2, Loader2 } from 'lucide-react';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc, updateDoc, limit } from "firebase/firestore";
+import { db } from "../../services/firebase";
+import { useAuth } from '../../context/AuthContext';
+import toast from 'react-hot-toast';
 
 const ChatbotWidget = () => {
+  const { currentUser } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    { id: 1, sender: 'ai', text: 'Chào Thanh Du! Bạn muốn ghi chép khoản chi tiêu nào hôm nay?', time: '10:00 AM' }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const unsubscribeRef = useRef(null);
+  const abortControllerRef = useRef(null); // Huy request khi user logout/navigate away
+
+  // ── Load / real-time sync lich su chat tu Firestore ──
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+
+    const messagesRef = collection(db, 'chat_history', currentUser.uid, 'messages');
+    const q = query(messagesRef, orderBy('timestamp', 'asc'), limit(100));
+
+    unsubscribeRef.current = onSnapshot(q, (snapshot) => {
+      if (snapshot.empty && !historyLoaded) {
+        // Lan dau, chua co lich su → hien tin nhan chao
+        setMessages([
+          {
+            id: 'welcome',
+            sender: 'ai',
+            text: `Chào ${currentUser?.displayName || 'bạn'}! Bạn muốn ghi chép khoản chi tiêu nào hôm nay?`,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+      } else {
+        const loaded = snapshot.docs.map(d => {
+          const data = d.data();
+          return {
+            id: d.id,
+            firestoreId: d.id,
+            sender: data.sender,
+            text: data.text,
+            image: data.image_url || null,
+            transactionData: data.transactionData || null,
+            confirmed: data.confirmed || false,
+            time: data.timestamp?.toDate
+              ? data.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : ''
+          };
+        });
+        setMessages(loaded);
+      }
+      setHistoryLoaded(true);
+    });
+
+    return () => {
+      unsubscribeRef.current?.();
+      // Huy bat ky request dang xu ly khi user logout (currentUser thay doi)
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, [currentUser?.uid]);
+
 
   const toggleChat = () => setIsOpen(!isOpen);
 
@@ -22,69 +83,261 @@ const ChatbotWidget = () => {
     }
   }, [messages, isOpen, isTyping]);
 
-  const handleSend = (e) => {
+  // ── Helper: luu 1 tin nhan vao Firestore ──
+  const saveChatMessage = async (sender, text, extra = {}) => {
+    if (!currentUser?.uid) return null;
+    try {
+      const messagesRef = collection(db, 'chat_history', currentUser.uid, 'messages');
+      const docRef = await addDoc(messagesRef, {
+        sender,
+        text,
+        timestamp: serverTimestamp(),
+        ...extra,
+      });
+      return docRef.id;
+    } catch (err) {
+      console.error('[Firestore] Luu chat loi:', err);
+      return null;
+    }
+  };
+
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedImage(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
+  const uploadImage = async (file, signal) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('http://127.0.0.1:8000/chatbot/upload', {
+      method: 'POST',
+      body: formData,
+      signal,  // Truyen signal de co the huy upload
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Upload anh that bai');
+    }
+
+    const data = await response.json();
+    return data.url;
+  };
+
+  const handleSend = async (e) => {
     e.preventDefault();
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() && !selectedImage) return;
+
+    const userText = inputValue;
+    const currentImage = selectedImage;
+    const currentPreview = previewUrl;
+
+    // Clear inputs
+    setInputValue('');
+    setSelectedImage(null);
+    setPreviewUrl(null);
 
     const newUserMsg = {
       id: Date.now(),
       sender: 'user',
-      text: inputValue,
+      text: userText,
+      image: currentPreview,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setMessages([...messages, newUserMsg]);
-    setInputValue('');
+    setMessages(prev => [...prev, newUserMsg]);
     setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
+    // Tao AbortController moi cho request nay
+    // Neu co request cu dang chay → huy truoc
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const { signal } = controller;
+
+    try {
+      let imageUrl = null;
+      if (currentImage) {
+        setIsUploading(true);
+        imageUrl = await uploadImage(currentImage, signal);
+        setIsUploading(false);
+      }
+
+      // Luu tin nhan user vao Firestore
+      await saveChatMessage('user', userText, {
+        image_url: imageUrl || null,
+      });
+
+      // Call Backend
+      const response = await fetch("http://127.0.0.1:8000/chatbot/chat", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUser.uid,
+          message: userText,
+          image_url: imageUrl
+        }),
+        signal,  // Cho phep huy request nay
+      });
+
+      const data = await response.json();
       setIsTyping(false);
-      setMessages(prev => [...prev, {
-        id: Date.now(),
-        sender: 'ai',
-        text: 'Đã ghi nhận! Mình vừa cập nhật dữ liệu của bạn.',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
-    }, 1500);
+
+      const transactionData = data.amount > 0 ? data : null;
+
+      // Luu tin nhan AI vao Firestore
+      const firestoreId = await saveChatMessage('ai', data.reply_message, {
+        transactionData: transactionData,
+        confirmed: false,
+      });
+
+      // Hien thi AI message (onSnapshot se tu dong cap nhat,
+      // nhung them ngay de UX nhanh hon)
+      setMessages(prev => {
+        // Tranh duplicate neu onSnapshot da cap nhat truoc
+        if (firestoreId && prev.some(m => m.firestoreId === firestoreId)) return prev;
+        const aiMsgId = Date.now();
+        return [...prev, {
+          id: aiMsgId,
+          firestoreId,
+          sender: 'ai',
+          text: data.reply_message,
+          transactionData,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }];
+      });
+
+    } catch (error) {
+      // AbortError: user da logout/navigate away — khong hien thi loi
+      if (error.name === 'AbortError') {
+        console.log('[Chat] Request bi huy (user logout hoac chuyen trang)');
+        setIsTyping(false);
+        setIsUploading(false);
+        return;
+      }
+      console.error("Chat error:", error);
+      setIsTyping(false);
+      setIsUploading(false);
+      toast.error("Co loi xay ra khi ket noi voi AI.");
+    }
+
+  };
+
+  const confirmTransaction = async (msgId, firestoreId, data) => {
+    try {
+      // 1. Luu giao dich vao Firestore
+      await addDoc(collection(db, "transactions"), {
+        userId: currentUser.uid,
+        amount: data.amount,
+        category: data.category,
+        note: data.note,
+        timestamp: serverTimestamp(),
+      });
+
+      // 2. Cap nhat trang thai confirmed trong chat_history
+      if (firestoreId) {
+        const msgDoc = doc(db, 'chat_history', currentUser.uid, 'messages', firestoreId);
+        await updateDoc(msgDoc, { confirmed: true, transactionData: null });
+      }
+
+      toast.success("Đã lưu giao dịch thành công!");
+
+      // 3. Cap nhat UI ngay (onSnapshot cung se tu dong cap nhat)
+      setMessages(prev => prev.map(msg =>
+        msg.id === msgId ? { ...msg, transactionData: null, confirmed: true } : msg
+      ));
+    } catch (error) {
+      console.error("Save error:", error);
+      toast.error("Không thể lưu giao dịch.");
+    }
   };
 
   return (
     <div className="fixed bottom-8 right-8 z-[100] flex flex-col items-end gap-4">
       {/* Chat Panel */}
       {isOpen && (
-        <div className="w-[350px] h-[500px] glass-panel bg-white/90 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-white/40 animate-in slide-in-from-bottom-5 fade-in duration-300">
-          <div className="bg-gradient-to-br from-[#005ab6] to-[#1672df] p-4 flex items-center justify-between text-white">
+        <div className="w-[380px] h-[600px] glass-panel bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-white/40 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-gradient-to-br from-[#005ab6] to-[#1672df] p-4 flex items-center justify-between text-white shadow-md">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <Bot className="w-5 h-5 fill-current" />
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center border border-white/30">
+                <Bot className="w-6 h-6 fill-current" />
               </div>
               <div>
                 <p className="text-sm font-bold">Trợ lý Tài chính AI</p>
-                <p className="text-[10px] opacity-80">Trực tuyến</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                  <p className="text-[10px] opacity-90">Trực tuyến</p>
+                </div>
               </div>
             </div>
-            <button onClick={toggleChat} className="hover:bg-white/20 p-1 rounded-full transition-colors">
+            <button onClick={toggleChat} className="hover:bg-white/20 p-2 rounded-full transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
-          
-          <div className="flex-1 p-4 space-y-4 overflow-y-auto bg-slate-50/50">
+
+          <div className="flex-1 p-4 space-y-4 overflow-y-auto bg-slate-50/50 scrollbar-hide">
             {messages.map((msg) => (
               <div key={msg.id} className={`flex flex-col gap-1 max-w-[85%] ${msg.sender === 'user' ? 'ml-auto items-end' : ''}`}>
-                <div className={`p-3 text-sm leading-relaxed ${
-                  msg.sender === 'user' 
-                    ? 'bg-primary text-white rounded-2xl rounded-tr-none' 
-                    : 'bg-white shadow-sm border border-slate-100 text-on-surface rounded-2xl rounded-tl-none'
-                }`}>
+                <div className={`p-3 text-sm leading-relaxed shadow-sm ${msg.sender === 'user'
+                  ? 'bg-primary text-white rounded-2xl rounded-tr-none'
+                  : 'bg-white border border-slate-100 text-on-surface rounded-2xl rounded-tl-none'
+                  }`}>
+                  {msg.image && (
+                    <img src={msg.image} alt="Upload" className="max-w-full rounded-lg mb-2 border border-white/20" />
+                  )}
                   {msg.text}
+
+                  {/* Transaction Confirmation Card */}
+                  {msg.transactionData && (
+                    <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-primary/10 text-on-surface space-y-2">
+                      <p className="text-xs font-bold text-primary uppercase tracking-wider">Xác nhận giao dịch</p>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">Số tiền:</span>
+                        <span className="font-bold text-lg">{msg.transactionData.amount.toLocaleString()}đ</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">Hạng mục:</span>
+                        <span className="font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">{msg.transactionData.category}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">Ghi chú:</span>
+                        <span className="italic">"{msg.transactionData.note}"</span>
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={() => confirmTransaction(msg.id, msg.firestoreId, msg.transactionData)}
+                          className="flex-1 bg-primary text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:opacity-90 transition-all"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Lưu lại
+                        </button>
+                        <button
+                          onClick={() => setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, transactionData: null } : m))}
+                          className="px-3 bg-slate-200 text-slate-600 py-2 rounded-lg text-xs font-bold hover:bg-slate-300 transition-all"
+                        >
+                          Hủy
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {msg.confirmed && (
+                    <div className="mt-2 flex items-center gap-1.5 text-[10px] text-green-600 font-bold bg-green-50 px-2 py-1 rounded-lg w-fit">
+                      <Check className="w-3 h-3" /> Đã lưu vào hệ thống
+                    </div>
+                  )}
                 </div>
-                <span className="text-[10px] text-on-surface-variant px-1">
+                <span className="text-[10px] text-on-surface-variant px-1 font-medium">
                   {msg.sender === 'user' ? 'Bạn' : 'AI'} • {msg.time}
                 </span>
               </div>
             ))}
-            
+
             {isTyping && (
               <div className="flex flex-col gap-1 max-w-[85%]">
                 <div className="bg-white shadow-sm border border-slate-100 p-4 rounded-2xl rounded-tl-none flex items-center gap-1.5 w-16">
@@ -96,18 +349,50 @@ const ChatbotWidget = () => {
             )}
             <div ref={messagesEndRef} />
           </div>
-          
+
           <div className="p-4 border-t border-slate-100 bg-white">
-            <form onSubmit={handleSend} className="flex items-center gap-2 bg-surface-container-low rounded-full px-4 py-2 focus-within:ring-2 ring-primary/20 transition-all">
-              <input 
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                className="flex-1 bg-transparent border-none focus:ring-0 text-sm p-0 placeholder:text-outline" 
-                placeholder="Nhập chi tiêu hoặc hỏi AI..." 
-                type="text"
-              />
-              <button type="submit" disabled={!inputValue.trim()} className="text-primary hover:text-primary-container disabled:opacity-50 transition-colors">
-                <Send className="w-5 h-5" />
+            {previewUrl && (
+              <div className="relative w-20 h-20 mb-3 group">
+                <img src={previewUrl} alt="Preview" className="w-full h-full object-cover rounded-xl border-2 border-primary/20 shadow-sm" />
+                <button
+                  onClick={() => { setSelectedImage(null); setPreviewUrl(null); }}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+
+            <form onSubmit={handleSend} className="flex items-center gap-2">
+              <div className="flex-1 flex items-center gap-2 bg-slate-100 rounded-2xl px-4 py-2.5 focus-within:ring-2 ring-primary/20 transition-all">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleImageSelect}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current.click()}
+                  className="text-slate-500 hover:text-primary transition-colors"
+                >
+                  <ImageIcon className="w-5 h-5" />
+                </button>
+                <input
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-sm p-0 placeholder:text-slate-400"
+                  placeholder="Nhập chi tiêu hoặc gửi ảnh bill..."
+                  type="text"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={(!inputValue.trim() && !selectedImage) || isUploading}
+                className="w-10 h-10 bg-primary text-white rounded-xl flex items-center justify-center hover:opacity-90 active:scale-95 disabled:opacity-50 transition-all shadow-lg shadow-primary/20"
+              >
+                {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
               </button>
             </form>
           </div>
@@ -115,7 +400,7 @@ const ChatbotWidget = () => {
       )}
 
       {/* Floating Button */}
-      <button 
+      <button
         onClick={toggleChat}
         className={`w-16 h-16 bg-gradient-to-br from-[#005ab6] to-[#1672df] text-white rounded-full flex items-center justify-center shadow-[0_8px_24px_rgba(0,90,182,0.3)] hover:scale-105 active:scale-95 transition-all duration-300 ${isOpen ? 'scale-0 opacity-0 hidden' : 'scale-100 opacity-100'}`}
       >

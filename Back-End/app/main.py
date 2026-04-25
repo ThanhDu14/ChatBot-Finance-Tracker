@@ -3,8 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 import firebase_admin
 from firebase_admin import credentials
 import os
+from dotenv import load_dotenv
 
-from app.api.routes import auth
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
+
+from app.api.routes import auth, chatbot
 
 # Initialize FastAPI App
 app = FastAPI(title="Smart Finance Tracker API")
@@ -17,11 +21,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
 
 # Initialize Firebase Admin SDK
 try:
@@ -56,6 +55,7 @@ except ValueError:
 
 # Include Routers
 app.include_router(auth.router)
+app.include_router(chatbot.router)
 
 @app.get("/")
 def read_root():
