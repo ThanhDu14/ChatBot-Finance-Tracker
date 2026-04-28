@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, X, Send, User, Image as ImageIcon, Paperclip, Check, Trash2, Loader2 } from 'lucide-react';
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc, updateDoc, limit } from "firebase/firestore";
+import { Bot, X, Send, User, Image as ImageIcon, Paperclip, Check, Trash2, Loader2, Mic, MicOff } from 'lucide-react';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, limit } from "firebase/firestore";
 import { db } from "../../services/firebase";
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
+import { uploadImage, sendMessage, saveTransaction } from '../../services/chatbotService';
 
 const ChatbotWidget = () => {
   const { currentUser } = useAuth();
@@ -15,11 +16,54 @@ const ChatbotWidget = () => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [savingMsgId, setSavingMsgId] = useState(null); // Chong click luu nhieu lan
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const unsubscribeRef = useRef(null);
   const abortControllerRef = useRef(null); // Huy request khi user logout/navigate away
+
+  // ── Speech Recognition Setup ──
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'vi-VN';
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setInputValue(transcript);
+        // Co the tu dong gui o day neu muon: handleSendVoice(transcript);
+      };
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        if (event.error === 'not-allowed') {
+          toast.error('Vui lòng cho phép truy cập Micro để sử dụng tính năng này.');
+        }
+      };
+      recognitionRef.current = recognition;
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      toast.error('Trình duyệt của bạn không hỗ trợ nhận diện giọng nói.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      recognitionRef.current.start();
+    }
+  };
 
   // ── Load / real-time sync lich su chat tu Firestore ──
   useEffect(() => {
@@ -174,19 +218,13 @@ const ChatbotWidget = () => {
         image_url: imageUrl || null,
       });
 
-      // Call Backend
-      const response = await fetch("http://127.0.0.1:8000/chatbot/chat", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUser.uid,
-          message: userText,
-          image_url: imageUrl
-        }),
-        signal,  // Cho phep huy request nay
+      // Goi chatbot service
+      const data = await sendMessage({
+        userId: currentUser.uid,
+        message: userText,
+        imageUrl,
+        signal,
       });
-
-      const data = await response.json();
       setIsTyping(false);
 
       const transactionData = data.amount > 0 ? data : null;
@@ -230,31 +268,31 @@ const ChatbotWidget = () => {
   };
 
   const confirmTransaction = async (msgId, firestoreId, data) => {
+    // Guard: chong click nhieu lan
+    if (savingMsgId) return;
+    setSavingMsgId(msgId);
+
     try {
-      // 1. Luu giao dich vao Firestore
-      await addDoc(collection(db, "transactions"), {
+      // Goi backend de luu giao dich + tu dong mark confirmed
+      await saveTransaction({
         userId: currentUser.uid,
         amount: data.amount,
         category: data.category,
         note: data.note,
-        timestamp: serverTimestamp(),
+        chatMessageId: firestoreId || null,
       });
 
-      // 2. Cap nhat trang thai confirmed trong chat_history
-      if (firestoreId) {
-        const msgDoc = doc(db, 'chat_history', currentUser.uid, 'messages', firestoreId);
-        await updateDoc(msgDoc, { confirmed: true, transactionData: null });
-      }
+      toast.success('Đã lưu giao dịch thành công!');
 
-      toast.success("Đã lưu giao dịch thành công!");
-
-      // 3. Cap nhat UI ngay (onSnapshot cung se tu dong cap nhat)
+      // Cap nhat UI ngay (onSnapshot cung se tu dong cap nhat)
       setMessages(prev => prev.map(msg =>
         msg.id === msgId ? { ...msg, transactionData: null, confirmed: true } : msg
       ));
     } catch (error) {
-      console.error("Save error:", error);
-      toast.error("Không thể lưu giao dịch.");
+      console.error('Save error:', error);
+      toast.error('Không thể lưu giao dịch: ' + error.message);
+    } finally {
+      setSavingMsgId(null);
     }
   };
 
@@ -312,9 +350,13 @@ const ChatbotWidget = () => {
                       <div className="flex gap-2 pt-2">
                         <button
                           onClick={() => confirmTransaction(msg.id, msg.firestoreId, msg.transactionData)}
-                          className="flex-1 bg-primary text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:opacity-90 transition-all"
+                          disabled={savingMsgId === msg.id}
+                          className="flex-1 bg-primary text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                         >
-                          <Check className="w-3.5 h-3.5" /> Lưu lại
+                          {savingMsgId === msg.id
+                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang lưu...</>
+                            : <><Check className="w-3.5 h-3.5" /> Lưu lại</>
+                          }
                         </button>
                         <button
                           onClick={() => setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, transactionData: null } : m))}
@@ -383,9 +425,23 @@ const ChatbotWidget = () => {
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   className="flex-1 bg-transparent border-none focus:ring-0 text-sm p-0 placeholder:text-slate-400"
-                  placeholder="Nhập chi tiêu hoặc gửi ảnh bill..."
+                  placeholder={isListening ? "Đang nghe..." : "Nhập chi tiêu hoặc gửi ảnh bill..."}
                   type="text"
                 />
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  className={`transition-all ${isListening ? 'text-red-500 scale-125' : 'text-slate-500 hover:text-primary'}`}
+                >
+                  {isListening ? (
+                    <div className="relative">
+                      <Mic className="w-5 h-5 animate-pulse" />
+                      <span className="absolute -inset-1 bg-red-500/20 rounded-full animate-ping"></span>
+                    </div>
+                  ) : (
+                    <Mic className="w-5 h-5" />
+                  )}
+                </button>
               </div>
               <button
                 type="submit"

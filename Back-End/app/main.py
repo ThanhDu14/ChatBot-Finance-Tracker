@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
 
-from app.api.routes import auth, chatbot
+from app.api.routes import auth, chatbot, transactions, analytics, budget
 
 # Initialize FastAPI App
 app = FastAPI(title="Smart Finance Tracker API")
@@ -56,6 +56,9 @@ except ValueError:
 # Include Routers
 app.include_router(auth.router)
 app.include_router(chatbot.router)
+app.include_router(transactions.router)
+app.include_router(analytics.router)
+app.include_router(budget.router)
 
 @app.get("/")
 def read_root():

@@ -62,3 +62,14 @@
       -webkit-backdrop-filter: blur(16px);
   }
 }
+
+/* ── Reset default browser focus outline on all inputs ───────────────── */
+input, textarea, select, button {
+  outline: none !important;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
