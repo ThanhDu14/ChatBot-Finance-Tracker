@@ -1,9 +1,9 @@
 import React from 'react';
-import { Wallet, LayoutDashboard, Receipt, BarChart3, LogOut } from 'lucide-react';
+import { Wallet, LayoutDashboard, Receipt, BarChart3, LogOut, X, Menu } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const { currentUser, logout } = useAuth();
 
@@ -14,11 +14,27 @@ const Sidebar = () => {
   ];
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 flex flex-col py-10 bg-slate-50 dark:bg-slate-900 border-r-0 z-20">
-      <div className="text-xl font-black text-[#005ab6] dark:text-[#2F80ED] px-6 mb-12 flex items-center gap-2">
-        <Wallet className="w-8 h-8 fill-current" />
-        <span>SMART TRACKER</span>
-      </div>
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden" 
+          onClick={onClose}
+        />
+      )}
+
+      <aside className={`fixed left-0 top-0 h-screen w-64 flex flex-col py-10 bg-slate-50 dark:bg-slate-900 border-r-0 z-50 transition-transform duration-300 lg:translate-x-0 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}>
+        <div className="flex items-center justify-between px-6 mb-12">
+          <div className="text-xl font-black text-[#005ab6] dark:text-[#2F80ED] flex items-center gap-2">
+            <Wallet className="w-8 h-8 fill-current" />
+            <span>SMART TRACKER</span>
+          </div>
+          <button onClick={onClose} className="lg:hidden p-2 hover:bg-slate-200 rounded-lg">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
 
       <nav className="flex-1 space-y-2">
         {navItems.map((item) => {
@@ -62,7 +78,8 @@ const Sidebar = () => {
           </button>
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 };
 

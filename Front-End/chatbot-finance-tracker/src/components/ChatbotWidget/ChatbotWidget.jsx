@@ -153,24 +153,7 @@ const ChatbotWidget = () => {
     }
   };
 
-  const uploadImage = async (file, signal) => {
-    const formData = new FormData();
-    formData.append('file', file);
 
-    const response = await fetch('http://127.0.0.1:8000/chatbot/upload', {
-      method: 'POST',
-      body: formData,
-      signal,  // Truyen signal de co the huy upload
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.detail || 'Upload anh that bai');
-    }
-
-    const data = await response.json();
-    return data.url;
-  };
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -297,10 +280,10 @@ const ChatbotWidget = () => {
   };
 
   return (
-    <div className="fixed bottom-8 right-8 z-[100] flex flex-col items-end gap-4">
+    <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-[100] flex flex-col items-end gap-4">
       {/* Chat Panel */}
       {isOpen && (
-        <div className="w-[380px] h-[600px] glass-panel bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-white/40 animate-in slide-in-from-bottom-5 fade-in duration-300">
+        <div className="w-[calc(100vw-32px)] sm:w-[380px] h-[500px] sm:h-[600px] glass-panel bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-white/40 animate-in slide-in-from-bottom-5 fade-in duration-300">
           <div className="bg-gradient-to-br from-[#005ab6] to-[#1672df] p-4 flex items-center justify-between text-white shadow-md">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center border border-white/30">

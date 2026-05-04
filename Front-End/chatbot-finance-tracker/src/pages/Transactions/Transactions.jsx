@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Filter, ChevronLeft, ChevronRight, Pencil, Trash2, X, Check, Loader2, Receipt, Utensils, Car, ShoppingBag, Gamepad2, HeartPulse, GraduationCap, Zap, MoreHorizontal, AlertCircle, Plus } from 'lucide-react';
+import { Search, Filter, ChevronLeft, ChevronRight, Pencil, Trash2, X, Check, Loader2, Receipt, Utensils, Car, ShoppingBag, Gamepad2, HeartPulse, GraduationCap, Zap, MoreHorizontal, AlertCircle, Plus, Menu } from 'lucide-react';
 import Sidebar from '../../components/common/Sidebar';
 import ChatbotWidget from '../../components/ChatbotWidget/ChatbotWidget';
 import { useAuth } from '../../context/AuthContext';
@@ -185,6 +185,9 @@ const DeleteModal = ({ transaction, onClose, onConfirm, deleting }) => (
 const Transactions = () => {
   const { currentUser } = useAuth();
 
+  // Mobile state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   // Data state
   const [transactions, setTransactions] = useState([]);
   const [total, setTotal] = useState(0);
@@ -285,20 +288,28 @@ const Transactions = () => {
 
   return (
     <div className="bg-background text-on-surface antialiased flex min-h-screen">
-      <Sidebar />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      <main className="flex-1 ml-64 min-h-screen pb-20">
+      <main className="flex-1 lg:ml-64 min-h-screen pb-20 w-full transition-all duration-300">
         {/* Header */}
-        <header className="w-full sticky top-0 z-10 flex items-center justify-between px-12 py-8 bg-background/80 backdrop-blur-md">
-          <div>
-            <h1 className="text-3xl font-bold tracking-[-0.02em] text-on-surface">Lịch sử giao dịch</h1>
-            <p className="text-on-surface-variant text-sm mt-1">
-              Tổng cộng <strong>{total}</strong> giao dịch
-            </p>
+        <header className="w-full sticky top-0 z-10 flex items-center justify-between px-4 sm:px-12 py-6 sm:py-8 bg-background/80 backdrop-blur-md">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-2 hover:bg-surface-container-low rounded-xl text-on-surface-variant transition-colors"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div>
+              <h1 className="text-xl sm:text-3xl font-bold tracking-[-0.02em] text-on-surface">Lịch sử giao dịch</h1>
+              <p className="hidden sm:block text-on-surface-variant text-sm mt-1">
+                Tổng cộng <strong>{total}</strong> giao dịch
+              </p>
+            </div>
           </div>
         </header>
 
-        <section className="px-12 space-y-6">
+        <section className="px-4 sm:px-12 space-y-6">
           {/* Search + Category Filters */}
           <div className="flex flex-col lg:flex-row gap-4">
             {/* Search */}
@@ -351,9 +362,9 @@ const Transactions = () => {
           )}
 
           {/* Table */}
-          <div className="bg-surface-container-lowest rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
+          <div className="bg-surface-container-lowest rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)] overflow-hidden border border-outline-variant/10">
+            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-outline-variant/20">
+              <table className="w-full border-collapse text-left min-w-[800px]">
                 <thead>
                   <tr className="border-b border-outline-variant/20">
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Ngày</th>
@@ -411,7 +422,7 @@ const Transactions = () => {
                             </span>
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center justify-end gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => setEditingTx(tx)}
                                 className="p-2 hover:bg-primary/10 text-on-surface-variant hover:text-primary rounded-lg transition-colors"

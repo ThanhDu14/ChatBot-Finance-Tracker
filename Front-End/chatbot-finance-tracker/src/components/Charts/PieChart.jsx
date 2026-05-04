@@ -93,7 +93,7 @@ const CategoryPieChart = ({ categories = {}, loading = false }) => {
     <div className="flex flex-col items-center gap-6">
       {/* Chart */}
       <div className="w-full h-56 relative">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <RechartsPieChart>
             <Pie
               data={chartData}

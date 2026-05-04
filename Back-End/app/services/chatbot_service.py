@@ -13,7 +13,7 @@ import json
 import re
 import requests
 from google import genai
-from google.genai import types
+from google.genai import types, errors
 from dotenv import load_dotenv
 from fastapi import HTTPException
 
@@ -21,23 +21,28 @@ from fastapi import HTTPException
 #  System Prompt
 # ─────────────────────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """
-Ban la mot tro ly tai chinh thong minh. Nhiem vu cua ban la trich xuat thong tin giao dich tu:
-- Tin nhan van ban cua nguoi dung (ghi tay), HOAC
-- Anh hoa don / receipt duoc gui len
+Bạn là một trợ lý quản lý tài chính có cá tính, hài hước và cực kỳ thông minh. 
+Tính cách của bạn:
+- Thân thiện nhưng đôi khi cũng biết "cà khịa" nhẹ nhàng để giúp người dùng tỉnh táo về tài chính.
+- Gọi người dùng là "Sếp", "Chủ nhân" hoặc "Đại gia".
+- Sử dụng nhiều emoji để tin nhắn sinh động.
+- Nếu chi tiêu cho "Ăn uống" quá nhiều, hãy nhắc nhở về vòng eo hoặc ví tiền một cách hài hước.
+- Nếu là "Mua sắm", hãy hỏi xem đây là "nhu cầu" hay "đam mê nhất thời".
+- Nếu chi tiêu cho "Y tế" hoặc "Giáo dục", hãy động viên và khen ngợi hết lời.
 
-Hay luon tra ve DUNG dinh dang JSON sau, KHONG them bat ky noi dung nao khac:
+Nhiệm vụ: Trích xuất thông tin giao dịch từ tin nhắn văn bản hoặc ảnh hóa đơn.
+
+Luôn trả về định dạng JSON sau:
 {
-  "amount": <so nguyen, so tien VND, neu khong tim thay thi la 0>,
-  "category": "<hang muc: An uong | Di chuyen | Mua sam | Giai tri | Y te | Giao duc | Tien ich | Khac>",
-  "note": "<ghi chu ngan gon ve giao dich>",
-  "reply_message": "<loi phan hoi than thien bang tieng Viet>"
+  "amount": <số nguyên, số tiền VND>,
+  "category": "<An uong | Di chuyen | Mua sam | Giai tri | Y te | Giao duc | Tien ich | Khac>",
+  "note": "<ghi chú ngắn gọn>",
+  "reply_message": "<lời phản hồi hài hước, cá tính bằng tiếng Việt>"
 }
 
-Luu y quan trong:
-- Neu la anh hoa don: doc so tong cuoi cung (TOTAL, Tong cong, Grand Total, ...).
-- Chuyen doi don vi neu can (vd: 1.554.053 → 1554053).
-- Neu khong tim thay so tien, tra ve amount: 0.
-- reply_message phai than thien, tu nhien.
+Lưu ý: 
+- Nếu không thấy số tiền, amount là 0 và reply_message sẽ hỏi lại sếp một cách dí dỏm.
+- Nếu là ảnh, hãy đọc tổng tiền cuối cùng.
 """
 
 
@@ -138,15 +143,26 @@ def analyze_image_bytes(img_bytes: bytes, mime_type: str, message: str = "") -> 
     if message:
         parts.append(types.Part.from_text(text=f"Ghi chu them cua nguoi dung: {message}"))
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[types.Content(role="user", parts=parts)],
-        config=_gemini_config()
-    )
-
-    result = _parse_json(response.text.strip())
-    print(f"[ChatbotService] analyze_image_bytes: ket qua → {json.dumps(result, ensure_ascii=False)}")
-    return result
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[types.Content(role="user", parts=parts)],
+            config=_gemini_config()
+        )
+        result = _parse_json(response.text.strip())
+        print(f"[ChatbotService] analyze_image_bytes: ket qua → {json.dumps(result, ensure_ascii=False)}")
+        return result
+    except errors.ServerError as e:
+        print(f"[ChatbotService] ServerError (503): {e}")
+        return {
+            "amount": 0,
+            "category": "Khac",
+            "note": "Lỗi kết nối AI",
+            "reply_message": "Sếp ơi, máy chủ AI đang bận tí xíu (lỗi 503). Sếp thử gửi lại ảnh sau 5-10 giây nhé! 🙏"
+        }
+    except Exception as e:
+        print(f"[ChatbotService] analyze_image_bytes error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def analyze_text(text: str) -> dict:
@@ -157,15 +173,26 @@ def analyze_text(text: str) -> dict:
     print(f"[ChatbotService] analyze_text: {text[:80]!r}")
 
     client = _get_gemini_client()
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=text,
-        config=_gemini_config()
-    )
-
-    result = _parse_json(response.text.strip())
-    print(f"[ChatbotService] analyze_text: ket qua → {json.dumps(result, ensure_ascii=False)}")
-    return result
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=text,
+            config=_gemini_config()
+        )
+        result = _parse_json(response.text.strip())
+        print(f"[ChatbotService] analyze_text: ket qua → {json.dumps(result, ensure_ascii=False)}")
+        return result
+    except errors.ServerError as e:
+        print(f"[ChatbotService] ServerError (503): {e}")
+        return {
+            "amount": 0,
+            "category": "Khac",
+            "note": "Lỗi kết nối AI",
+            "reply_message": "Ối, Sếp ơi! Google đang quá tải nên em hơi 'đứng hình' tí. Sếp chat lại với em sau vài giây nhé! ❤️"
+        }
+    except Exception as e:
+        print(f"[ChatbotService] analyze_text error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

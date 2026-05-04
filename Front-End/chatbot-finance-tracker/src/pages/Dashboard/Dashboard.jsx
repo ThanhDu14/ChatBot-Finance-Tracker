@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Filter, Wallet, Receipt, CreditCard, Banknote, Calendar, TrendingUp, TrendingDown, ShoppingBag, Utensils, Zap, Dumbbell, Car, GraduationCap, HeartPulse, Gamepad2, MoreHorizontal, RefreshCw, AlertCircle, Target, Settings, X, Check, Loader2 } from 'lucide-react';
+import { Search, Filter, Wallet, Receipt, CreditCard, Banknote, Calendar, TrendingUp, TrendingDown, ShoppingBag, Utensils, Zap, Dumbbell, Car, GraduationCap, HeartPulse, Gamepad2, MoreHorizontal, RefreshCw, AlertCircle, Target, Settings, X, Check, Loader2, Menu } from 'lucide-react';
 import Sidebar from '../../components/common/Sidebar';
 import ChatbotWidget from '../../components/ChatbotWidget/ChatbotWidget';
 import AreaChart from '../../components/Charts/AreaChart';
@@ -99,6 +99,9 @@ const Dashboard = () => {
   const [period, setPeriod] = useState('month');
   const { data, loading, error, refetch } = useAnalytics(currentUser?.uid, period);
 
+  // Mobile state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   // Budget state
   const [budget, setBudgetData] = useState(null);
   const [budgetLoading, setBudgetLoading] = useState(true);
@@ -173,20 +176,25 @@ const Dashboard = () => {
 
   return (
     <div className="bg-background text-on-surface antialiased flex min-h-screen">
-      <Sidebar />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content Canvas */}
-      <main className="flex-1 ml-64 min-h-screen pb-20">
+      <main className="flex-1 lg:ml-64 min-h-screen pb-20 w-full transition-all duration-300">
         {/* TopAppBar */}
-        <header className="w-full sticky top-0 z-10 flex items-center justify-between px-12 py-8 bg-background/80 backdrop-blur-md">
-          <div>
-            <h1 className="text-3xl font-bold tracking-[-0.02em] text-on-surface">Tổng quan tài chính</h1>
-            <p className="text-on-surface-variant text-sm mt-1">
-              Chào mừng trở lại, {currentUser?.displayName || 'bạn'}.
-              {data && data.transaction_count > 0
-                ? ' Hãy xem tình hình chi tiêu của bạn.'
-                : ' Bắt đầu ghi nhận chi tiêu qua chatbot nhé!'}
-            </p>
+        <header className="w-full sticky top-0 z-10 flex items-center justify-between px-4 sm:px-12 py-6 sm:py-8 bg-background/80 backdrop-blur-md">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-2 hover:bg-surface-container-low rounded-xl text-on-surface-variant transition-colors"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div>
+              <h1 className="text-xl sm:text-3xl font-bold tracking-[-0.02em] text-on-surface">Tổng quan</h1>
+              <p className="hidden sm:block text-on-surface-variant text-sm mt-1">
+                Chào mừng trở lại, {currentUser?.displayName || 'bạn'}.
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <button
@@ -199,7 +207,7 @@ const Dashboard = () => {
           </div>
         </header>
 
-        <section className="px-12 space-y-8">
+        <section className="px-4 sm:px-12 space-y-8">
           {/* Budget Progress Bar */}
           {!budgetLoading && budget && (
             <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)]">
@@ -360,17 +368,17 @@ const Dashboard = () => {
           </div>
 
           {/* Dashboard Analytics Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
             {/* Spending Trends Chart Area */}
-            <div className="lg:col-span-2 bg-surface-container-lowest p-8 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)]">
-              <div className="flex items-center justify-between mb-6">
+            <div className="lg:col-span-2 bg-surface-container-lowest p-5 sm:p-8 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div>
                   <h4 className="text-lg font-bold text-on-surface">Xu hướng chi tiêu</h4>
                   <p className="text-sm text-on-surface-variant">
                     Chi tiêu theo ngày ({period === 'today' ? 'hôm nay' : period === 'week' ? '7 ngày qua' : '30 ngày qua'})
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-full bg-primary"></span>
                     <span className="text-sm font-medium text-on-surface-variant">Chi phí</span>
@@ -387,7 +395,7 @@ const Dashboard = () => {
             </div>
 
             {/* Category PieChart */}
-            <div className="bg-surface-container-lowest p-8 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)]">
+            <div className="bg-surface-container-lowest p-5 sm:p-8 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)]">
               <div className="mb-6">
                 <h4 className="text-lg font-bold text-on-surface">Chi tiêu theo danh mục</h4>
                 <p className="text-sm text-on-surface-variant">Tỷ lệ phân bổ chi tiêu</p>
