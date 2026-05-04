@@ -129,4 +129,4 @@ Hệ thống cung cấp các API Endpoint chính cho Chatbot:
   ```
 
 ## Liên kết video demo
-- **Video Demo:** [Link Google Drive / YouTube của bạn]
+- **Video Demo:** https://drive.google.com/file/d/1jFbI80yvdCEFUlGI6LmBaoYla1YUIc1K/view?usp=sharing
