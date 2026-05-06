@@ -260,6 +260,7 @@ const ChatbotWidget = () => {
       await saveTransaction({
         userId: currentUser.uid,
         amount: data.amount,
+        type: data.type || 'expense',
         category: data.category,
         note: data.note,
         chatMessageId: firestoreId || null,

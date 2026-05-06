@@ -64,12 +64,13 @@ export async function sendMessage({ userId, message, imageUrl, signal }) {
  * @param {string|null} params.chatMessageId — Firestore ID của tin nhắn chat
  * @returns {Promise<{ transaction_id, amount, category, note, created_at, message }>}
  */
-export async function saveTransaction({ userId, amount, category, note, chatMessageId }) {
+export async function saveTransaction({ userId, amount, type, category, note, chatMessageId }) {
   return apiRequest('/transactions', {
     method: 'POST',
     body: JSON.stringify({
       user_id: userId,
       amount,
+      type: type || 'expense',
       category,
       note: note || '',
       chat_message_id: chatMessageId || null,

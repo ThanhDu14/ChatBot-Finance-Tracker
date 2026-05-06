@@ -16,10 +16,16 @@ from firebase_admin import firestore
 from fastapi import HTTPException
 
 
-VALID_CATEGORIES = {
+VALID_EXPENSE_CATEGORIES = {
     "An uong", "Di chuyen", "Mua sam",
     "Giai tri", "Y te", "Giao duc", "Tien ich", "Khac"
 }
+
+VALID_INCOME_CATEGORIES = {
+    "Luong", "Thuong", "Kinh doanh", "Dau tu", "Khac"
+}
+
+VALID_CATEGORIES = VALID_EXPENSE_CATEGORIES | VALID_INCOME_CATEGORIES
 
 
 @dataclass
@@ -38,33 +44,25 @@ def save_transaction(
     category: str,
     note: str,
     chat_message_id: Optional[str] = None,
+    type: str = "expense",
 ) -> TransactionResult:
     """
-    Validate và lưu một giao dịch chi tiêu vào Firestore.
-
-    Args:
-        user_id         : Firebase UID của user.
-        amount          : Số tiền (VND, phải > 0).
-        category        : Hạng mục chi tiêu (phải nằm trong VALID_CATEGORIES).
-        note            : Ghi chú ngắn gọn.
-        chat_message_id : ID tin nhắn chat (nếu có, dùng để mark confirmed).
-
-    Returns:
-        TransactionResult chứa ID và metadata của giao dịch vừa lưu.
-
-    Raises:
-        HTTPException 400: Dữ liệu không hợp lệ.
-        HTTPException 500: Lỗi khi ghi Firestore.
+    Validate và lưu một giao dịch (thu nhập/chi tiêu) vào Firestore.
     """
     # ── Validation ────────────────────────────────────────────────────────────
     if not user_id:
         raise HTTPException(status_code=400, detail="Thieu user_id")
     if amount <= 0:
         raise HTTPException(status_code=400, detail="amount phai lon hon 0")
-    if category not in VALID_CATEGORIES:
+        
+    if type not in ["income", "expense"]:
+        raise HTTPException(status_code=400, detail="Type phai la 'income' hoac 'expense'")
+        
+    valid_cats = VALID_INCOME_CATEGORIES if type == "income" else VALID_EXPENSE_CATEGORIES
+    if category not in valid_cats:
         raise HTTPException(
             status_code=400,
-            detail=f"Category khong hop le. Chon 1 trong: {', '.join(sorted(VALID_CATEGORIES))}"
+            detail=f"Category khong hop le cho loai {type}. Chon 1 trong: {', '.join(sorted(valid_cats))}"
         )
 
     # ── Ghi vào Firestore ─────────────────────────────────────────────────────
@@ -78,12 +76,13 @@ def save_transaction(
             "amount": amount,
             "category": category,
             "note": note.strip(),
+            "type": type,
             "timestamp": now,
             "source": "chatbot" if chat_message_id else "manual",
             "chatMessageId": chat_message_id,
         })
 
-        print(f"[TransactionService] Luu thanh cong: {tx_ref.id} | {amount:,}d | {category}")
+        print(f"[TransactionService] Luu thanh cong: {tx_ref.id} | {type} | {amount:,}d | {category}")
 
         # ── Mark chat message là confirmed (nếu có) ───────────────────────────
         if chat_message_id:
@@ -95,6 +94,7 @@ def save_transaction(
             amount=amount,
             category=category,
             note=note.strip(),
+            type=type,
             created_at=now.isoformat(),
         )
 
@@ -109,6 +109,7 @@ def list_transactions(
     user_id: str,
     category: Optional[str] = None,
     search: Optional[str] = None,
+    type: Optional[str] = None,
     page: int = 1,
     page_size: int = 10,
 ) -> Dict[str, Any]:
@@ -128,6 +129,9 @@ def list_transactions(
         if category and category in VALID_CATEGORIES:
             query = query.where("category", "==", category)
 
+        if type and type in ["income", "expense"]:
+            query = query.where("type", "==", type)
+
         # Fetch all matching docs (filter search in Python to avoid composite index)
         docs = list(query.stream())
 
@@ -143,6 +147,7 @@ def list_transactions(
                 "amount": data.get("amount", 0),
                 "category": data.get("category", "Khac"),
                 "note": data.get("note", ""),
+                "type": data.get("type", "expense"),
                 "source": data.get("source", "manual"),
                 "created_at": created_at,
             })
@@ -188,6 +193,7 @@ def update_transaction(
     amount: Optional[int] = None,
     category: Optional[str] = None,
     note: Optional[str] = None,
+    type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Cập nhật một giao dịch. Chỉ cập nhật các field được truyền vào."""
     if not user_id:
@@ -207,14 +213,25 @@ def update_transaction(
 
         # Build update payload
         update_data = {}
+        
+        current_type = type if type else data.get("type", "expense")
+        valid_cats = VALID_INCOME_CATEGORIES if current_type == "income" else VALID_EXPENSE_CATEGORIES
+
+        if type is not None:
+            if type not in ["income", "expense"]:
+                raise HTTPException(status_code=400, detail="Type phai la 'income' hoac 'expense'")
+            update_data["type"] = type
+
         if amount is not None:
             if amount <= 0:
                 raise HTTPException(status_code=400, detail="amount phai lon hon 0")
             update_data["amount"] = amount
+            
         if category is not None:
-            if category not in VALID_CATEGORIES:
-                raise HTTPException(status_code=400, detail=f"Category khong hop le")
+            if category not in valid_cats:
+                raise HTTPException(status_code=400, detail=f"Category khong hop le cho loai {current_type}")
             update_data["category"] = category
+            
         if note is not None:
             update_data["note"] = note.strip()
 
@@ -232,6 +249,7 @@ def update_transaction(
             "amount": updated_doc.get("amount"),
             "category": updated_doc.get("category"),
             "note": updated_doc.get("note"),
+            "type": updated_doc.get("type", "expense"),
             "source": updated_doc.get("source"),
             "created_at": ts.isoformat() if isinstance(ts, datetime) else str(ts),
         }

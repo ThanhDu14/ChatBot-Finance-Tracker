@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Filter, ChevronLeft, ChevronRight, Pencil, Trash2, X, Check, Loader2, Receipt, Utensils, Car, ShoppingBag, Gamepad2, HeartPulse, GraduationCap, Zap, MoreHorizontal, AlertCircle, Plus, Menu } from 'lucide-react';
+import { Search, Filter, ChevronLeft, ChevronRight, Pencil, Trash2, X, Check, Loader2, Receipt, Utensils, Car, ShoppingBag, Gamepad2, HeartPulse, GraduationCap, Zap, MoreHorizontal, AlertCircle, Plus, Menu, Wallet, TrendingUp, Target } from 'lucide-react';
 import Sidebar from '../../components/common/Sidebar';
 import ChatbotWidget from '../../components/ChatbotWidget/ChatbotWidget';
 import { useAuth } from '../../context/AuthContext';
@@ -55,13 +55,25 @@ const RowSkeleton = () => (
 
 const EditModal = ({ transaction, onClose, onSave, saving }) => {
   const [amount, setAmount] = useState(transaction.amount);
+  const [type, setType] = useState(transaction.type || 'expense');
   const [category, setCategory] = useState(transaction.category);
   const [note, setNote] = useState(transaction.note);
 
+  // When type changes, we should reset category if it's not valid for the new type
+  const handleTypeChange = (newType) => {
+    setType(newType);
+    const validCats = newType === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+    if (!validCats.find(c => c.key === category)) {
+      setCategory(validCats[0].key);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave({ amount: Number(amount), category, note });
+    onSave({ amount: Number(amount), type, category, note });
   };
+
+  const activeCategories = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -74,6 +86,26 @@ const EditModal = ({ transaction, onClose, onSave, saving }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Type Toggle */}
+          <div className="flex p-1 bg-surface-container-low rounded-xl">
+            <button
+              type="button"
+              onClick={() => handleTypeChange('expense')}
+              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${type === 'expense' ? 'bg-white text-error shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+            >
+              Chi tiêu
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTypeChange('income')}
+              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${type === 'income' ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+            >
+              Thu nhập
+            </button>
+          </div>
+
           {/* Amount */}
           <div>
             <label className="text-sm font-bold text-on-surface-variant block mb-1.5">Số tiền (VND)</label>
@@ -91,7 +123,7 @@ const EditModal = ({ transaction, onClose, onSave, saving }) => {
           <div>
             <label className="text-sm font-bold text-on-surface-variant block mb-1.5">Danh mục</label>
             <div className="grid grid-cols-4 gap-2">
-              {CATEGORIES.map(cat => {
+              {activeCategories.map(cat => {
                 const Icon = cat.icon;
                 const isActive = category === cat.key;
                 return (
@@ -99,11 +131,10 @@ const EditModal = ({ transaction, onClose, onSave, saving }) => {
                     key={cat.key}
                     type="button"
                     onClick={() => setCategory(cat.key)}
-                    className={`flex flex-col items-center gap-1 p-2.5 rounded-xl text-xs font-medium transition-all ${
-                      isActive
+                    className={`flex flex-col items-center gap-1 p-2.5 rounded-xl text-xs font-medium transition-all ${isActive
                         ? 'bg-primary text-white shadow-md shadow-primary/20'
                         : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
-                    }`}
+                      }`}
                   >
                     <Icon className="w-4 h-4" />
                     {cat.label}
@@ -294,7 +325,7 @@ const Transactions = () => {
         {/* Header */}
         <header className="w-full sticky top-0 z-10 flex items-center justify-between px-4 sm:px-12 py-6 sm:py-8 bg-background/80 backdrop-blur-md">
           <div className="flex items-center gap-4">
-            <button 
+            <button
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden p-2 hover:bg-surface-container-low rounded-xl text-on-surface-variant transition-colors"
             >
@@ -338,11 +369,10 @@ const Transactions = () => {
                   <button
                     key={cat.key}
                     onClick={() => handleCategoryChange(cat.key)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      isActive
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${isActive
                         ? 'bg-primary text-white shadow-sm'
                         : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low shadow-sm'
-                    }`}
+                      }`}
                   >
                     <Icon className="w-3.5 h-3.5" />
                     {cat.label}
@@ -401,10 +431,13 @@ const Transactions = () => {
                             <p className="text-xs text-on-surface-variant">{formatTime(tx.created_at)}</p>
                           </td>
                           <td className="px-6 py-4">
-                            <span className="text-sm font-black text-on-surface">-{formatVND(tx.amount)}</span>
+                            <span className={`text-sm font-black ${tx.type === 'income' ? 'text-primary' : 'text-error'}`}>
+                              {tx.type === 'income' ? '+' : '-'}{formatVND(tx.amount)}
+                            </span>
                           </td>
                           <td className="px-6 py-4">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-primary-fixed text-on-primary-fixed rounded-lg text-xs font-bold">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${tx.type === 'income' ? 'bg-primary/10 text-primary' : 'bg-error/10 text-error'
+                              }`}>
                               <Icon className="w-3.5 h-3.5" />
                               {cat.label}
                             </span>
@@ -413,11 +446,10 @@ const Transactions = () => {
                             <p className="text-sm text-on-surface max-w-xs truncate">{tx.note || '—'}</p>
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
-                              tx.source === 'chatbot'
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${tx.source === 'chatbot'
                                 ? 'bg-secondary-fixed text-on-secondary-fixed'
                                 : 'bg-surface-container-high text-on-surface-variant'
-                            }`}>
+                              }`}>
                               {tx.source === 'chatbot' ? 'Chatbot' : 'Thủ công'}
                             </span>
                           </td>
@@ -477,11 +509,10 @@ const Transactions = () => {
                       <button
                         key={pageNum}
                         onClick={() => setPage(pageNum)}
-                        className={`w-9 h-9 rounded-lg text-sm font-bold transition-colors ${
-                          pageNum === page
+                        className={`w-9 h-9 rounded-lg text-sm font-bold transition-colors ${pageNum === page
                             ? 'bg-primary text-white shadow-sm'
                             : 'text-on-surface-variant hover:bg-surface-container-low'
-                        }`}
+                          }`}
                       >
                         {pageNum}
                       </button>

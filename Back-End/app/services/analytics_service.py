@@ -32,13 +32,16 @@ def get_analytics_summary(
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             end = now
         elif period == "week":
-            start = now - timedelta(days=7)
+            # Đầu tuần hiện tại (Thứ 2)
+            start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
             end = now
         elif period == "month":
-            start = now - timedelta(days=30)
+            # Đầu tháng hiện tại
+            start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             end = now
         elif period == "year":
-            start = now - timedelta(days=365)
+            # Đầu năm hiện tại
+            start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
             end = now
         elif period == "custom" and start_date and end_date:
             start = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -64,9 +67,11 @@ def get_analytics_summary(
         print(f"[AnalyticsService] Found {len(docs)} total transactions for user")
 
         # Calculate analytics — filter by date in Python
-        total_spending = 0.0
+        total_income = 0.0
+        total_expense = 0.0
         category_spending: Dict[str, float] = {}
-        daily_spending: Dict[str, float] = {}
+        daily_expense: Dict[str, float] = {}
+        daily_income: Dict[str, float] = {}
         transaction_list: List[Dict[str, Any]] = []
 
         for doc in docs:
@@ -85,15 +90,20 @@ def get_analytics_summary(
                 continue
 
             amount = transaction.get("amount", 0)
-            total_spending += amount
-
-            # Category spending
-            cat = transaction.get("category", "Khac")
-            category_spending[cat] = category_spending.get(cat, 0) + amount
-
-            # Daily spending — convert to date string key
+            trans_type = transaction.get("type", "expense")
+            
+            # Convert to date string key
             date_key = trans_date.strftime("%Y-%m-%d")
-            daily_spending[date_key] = daily_spending.get(date_key, 0) + amount
+
+            if trans_type == "income":
+                total_income += amount
+                daily_income[date_key] = daily_income.get(date_key, 0) + amount
+            else:
+                total_expense += amount
+                # Category spending only for expenses
+                cat = transaction.get("category", "Khac")
+                category_spending[cat] = category_spending.get(cat, 0) + amount
+                daily_expense[date_key] = daily_expense.get(date_key, 0) + amount
 
             # Build transaction entry with safe date serialization
             created_iso = trans_date.isoformat()
@@ -101,8 +111,9 @@ def get_analytics_summary(
                 {
                     "transaction_id": doc.id,
                     "amount": amount,
-                    "category": cat,
+                    "category": transaction.get("category", "Khac"),
                     "note": transaction.get("note", ""),
+                    "type": trans_type,
                     "source": transaction.get("source", "manual"),
                     "created_at": created_iso,
                 }
@@ -112,7 +123,8 @@ def get_analytics_summary(
         transaction_list.sort(key=lambda t: t["created_at"], reverse=True)
 
         # Sort daily spending by date
-        sorted_daily = dict(sorted(daily_spending.items()))
+        sorted_daily_expense = dict(sorted(daily_expense.items()))
+        sorted_daily_income = dict(sorted(daily_income.items()))
 
         # Get category with max spending
         top_category = None
@@ -122,12 +134,12 @@ def get_analytics_summary(
             max_spending = top_item[1]
             top_category = top_item[0]
 
-        # Calculate trend (simple comparison)
+        # Calculate trend (simple comparison) for expenses
         trend = None
-        if period in ["week", "month"] and len(sorted_daily) > 1:
-            dates = list(sorted_daily.keys())
-            recent_amount = sorted_daily[dates[-1]]
-            previous_amount = sorted_daily[dates[-2]]
+        if period in ["week", "month"] and len(sorted_daily_expense) > 1:
+            dates = list(sorted_daily_expense.keys())
+            recent_amount = sorted_daily_expense[dates[-1]]
+            previous_amount = sorted_daily_expense[dates[-2]]
 
             if previous_amount > 0:
                 percentage = (
@@ -143,22 +155,27 @@ def get_analytics_summary(
                     "direction": "up" if recent_amount > 0 else "neutral",
                 }
 
-        print(f"[AnalyticsService] Result: {len(transaction_list)} transactions in period, total={total_spending}")
+        print(f"[AnalyticsService] Result: {len(transaction_list)} transactions in period, expense={total_expense}, income={total_income}")
 
         # Return summary
         return {
             "period": period,
             "start_date": start.strftime("%Y-%m-%d"),
             "end_date": end.strftime("%Y-%m-%d"),
-            "total_spending": total_spending,
+            "total_spending": total_expense,  # Legacy field for compatibility
+            "total_expense": total_expense,
+            "total_income": total_income,
+            "net_balance": total_income - total_expense,
             "average_daily_spending": (
-                total_spending / len(sorted_daily) if sorted_daily else 0
+                total_expense / len(sorted_daily_expense) if sorted_daily_expense else 0
             ),
             "transaction_count": len(transaction_list),
             "categories": category_spending,
             "top_category": top_category,
             "max_spending": max_spending,
-            "daily_spending": sorted_daily,
+            "daily_spending": sorted_daily_expense,  # Legacy field
+            "daily_expense": sorted_daily_expense,
+            "daily_income": sorted_daily_income,
             "trend": trend,
             "transactions": transaction_list,
         }

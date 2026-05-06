@@ -20,17 +20,23 @@ function formatFullVND(value) {
 }
 
 /**
- * Chuyển đổi daily_spending object → mảng cho Recharts.
- * Input:  { "2026-04-21": 50000, "2026-04-22": 120000, ... }
- * Output: [{ name: "21/04", expenses: 50000 }, ...]
+ * Chuyển đổi daily data object → mảng cho Recharts.
+ * Hỗ trợ gộp chung Income và Expense.
  */
-function transformDailyData(dailySpending) {
-  if (!dailySpending || Object.keys(dailySpending).length === 0) return [];
+function transformDailyData(expenseData, incomeData) {
+  if (!expenseData && !incomeData) return [];
 
-  return Object.entries(dailySpending).map(([dateStr, amount]) => {
+  const allDates = new Set([...Object.keys(expenseData || {}), ...Object.keys(incomeData || {})]);
+  const sortedDates = Array.from(allDates).sort();
+
+  return sortedDates.map(dateStr => {
     const date = new Date(dateStr);
     const label = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}`;
-    return { name: label, expenses: amount };
+    return {
+      name: label,
+      expenses: expenseData?.[dateStr] || 0,
+      incomes: incomeData?.[dateStr] || 0
+    };
   });
 }
 
@@ -38,21 +44,26 @@ const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-surface-container-lowest px-4 py-3 rounded-xl shadow-lg border border-outline-variant/20">
-        <p className="text-xs font-bold text-on-surface mb-1">{label}</p>
-        <p className="text-sm font-black text-primary">{formatFullVND(payload[0].value)}</p>
+        <p className="text-xs font-bold text-on-surface mb-2">{label}</p>
+        {payload.map((entry, index) => (
+          <p key={index} className={`text-sm font-black ${entry.dataKey === 'expenses' ? 'text-error' : 'text-primary'} mb-1`}>
+            {entry.dataKey === 'expenses' ? 'Chi: ' : 'Thu: '}
+            {formatFullVND(entry.value)}
+          </p>
+        ))}
       </div>
     );
   }
   return null;
 };
 
-const AreaChart = ({ data: dailySpending }) => {
-  const chartData = transformDailyData(dailySpending);
+const AreaChart = ({ expenseData, incomeData }) => {
+  const chartData = transformDailyData(expenseData, incomeData);
 
   if (chartData.length === 0) {
     return (
       <div className="h-64 w-full mt-4 flex items-center justify-center">
-        <p className="text-on-surface-variant text-sm">Chưa có dữ liệu chi tiêu trong khoảng thời gian này.</p>
+        <p className="text-on-surface-variant text-sm">Chưa có dữ liệu giao dịch trong khoảng thời gian này.</p>
       </div>
     );
   }
@@ -71,6 +82,10 @@ const AreaChart = ({ data: dailySpending }) => {
         >
           <defs>
             <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#ba1a1a" stopOpacity={0.2}/>
+              <stop offset="95%" stopColor="#ba1a1a" stopOpacity={0}/>
+            </linearGradient>
+            <linearGradient id="colorIncomes" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#005ab6" stopOpacity={0.2}/>
               <stop offset="95%" stopColor="#005ab6" stopOpacity={0}/>
             </linearGradient>
@@ -91,10 +106,19 @@ const AreaChart = ({ data: dailySpending }) => {
           <Area 
             type="monotone" 
             dataKey="expenses" 
-            stroke="#005ab6" 
+            stroke="#ba1a1a" 
             strokeWidth={3}
             fillOpacity={1} 
             fill="url(#colorExpenses)" 
+            animationDuration={800}
+          />
+          <Area 
+            type="monotone" 
+            dataKey="incomes" 
+            stroke="#005ab6" 
+            strokeWidth={3}
+            fillOpacity={1} 
+            fill="url(#colorIncomes)" 
             animationDuration={800}
           />
         </RechartsAreaChart>

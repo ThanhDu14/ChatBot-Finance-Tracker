@@ -53,6 +53,15 @@ except ValueError:
     except Exception as e:
         print(f"Error initializing Firebase Admin from .env: {e}")
 
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.redis import RedisBackend
+from redis import asyncio as aioredis
+
+@app.on_event("startup")
+async def startup():
+    redis = aioredis.from_url("redis://localhost:6379")
+    FastAPICache.init(RedisBackend(redis), prefix="finance-cache")
+
 # Include Routers
 app.include_router(auth.router)
 app.include_router(chatbot.router)

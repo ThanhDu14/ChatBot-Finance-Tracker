@@ -27,6 +27,10 @@ const CATEGORY_ICONS = {
   'Y te': HeartPulse,
   'Giao duc': GraduationCap,
   'Tien ich': Zap,
+  'Luong': Wallet,
+  'Thuong': Receipt,
+  'Kinh doanh': TrendingUp,
+  'Dau tu': Target,
   'Khac': MoreHorizontal,
 };
 
@@ -39,6 +43,10 @@ const CATEGORY_LABELS = {
   'Y te': 'Y tế',
   'Giao duc': 'Giáo dục',
   'Tien ich': 'Tiện ích',
+  'Luong': 'Lương',
+  'Thuong': 'Thưởng',
+  'Kinh doanh': 'Kinh doanh',
+  'Dau tu': 'Đầu tư',
   'Khac': 'Khác',
 };
 
@@ -307,54 +315,53 @@ const Dashboard = () => {
               </>
             ) : (
               <>
-                {/* Tổng chi tiêu */}
+                {/* Tổng thu */}
                 <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)] border border-transparent hover:shadow-[0_8px_24px_rgba(0,90,182,0.08)] transition-shadow">
                   <div className="flex items-center justify-between mb-4">
-                    <Banknote className="w-10 h-10 text-primary p-2 bg-primary-fixed rounded-xl" />
+                    <Wallet className="w-10 h-10 text-tertiary p-2 bg-tertiary-fixed rounded-xl" />
+                  </div>
+                  <p className="text-on-surface-variant text-sm font-medium">Tổng thu nhập</p>
+                  <h3 className="text-2xl font-black mt-1 text-tertiary">{formatVND(data?.total_income)}</h3>
+                </div>
+
+                {/* Tổng chi */}
+                <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)] border border-transparent hover:shadow-[0_8px_24px_rgba(0,90,182,0.08)] transition-shadow">
+                  <div className="flex items-center justify-between mb-4">
+                    <Banknote className="w-10 h-10 text-error p-2 bg-error-container rounded-xl" />
                     {trendPercent != null && (
                       <span className={`text-xs font-bold px-2 py-1 rounded-md ${trendDirection === 'down'
                           ? 'text-secondary bg-secondary-fixed'
-                          : 'text-tertiary bg-tertiary-fixed'
+                          : 'text-error bg-error-container'
                         }`}>
                         {trendDirection === 'down' ? '↓' : '↑'}{Math.abs(trendPercent)}%
                       </span>
                     )}
                   </div>
                   <p className="text-on-surface-variant text-sm font-medium">Tổng chi tiêu</p>
-                  <h3 className="text-2xl font-black mt-1 text-on-surface">{formatVND(data?.total_spending)}</h3>
+                  <h3 className="text-2xl font-black mt-1 text-on-surface">{formatVND(data?.total_expense)}</h3>
                 </div>
 
-                {/* Số giao dịch */}
+                {/* Số dư */}
                 <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)] border border-transparent hover:shadow-[0_8px_24px_rgba(0,90,182,0.08)] transition-shadow">
                   <div className="flex items-center justify-between mb-4">
-                    <Receipt className="w-10 h-10 text-secondary p-2 bg-secondary-fixed rounded-xl" />
+                    <Receipt className="w-10 h-10 text-primary p-2 bg-primary-fixed rounded-xl" />
                     <span className="text-xs font-bold text-primary bg-primary-fixed px-2 py-1 rounded-md">
-                      {period === 'today' ? 'Hôm nay' : period === 'week' ? '7 ngày' : '30 ngày'}
+                      {period === 'today' ? 'Hôm nay' : period === 'week' ? 'Tuần này' : 'Tháng này'}
                     </span>
                   </div>
-                  <p className="text-on-surface-variant text-sm font-medium">Số giao dịch</p>
-                  <h3 className="text-2xl font-black mt-1 text-on-surface">{data?.transaction_count ?? 0}</h3>
-                </div>
-
-                {/* Chi tiêu trung bình / ngày */}
-                <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)] border border-transparent hover:shadow-[0_8px_24px_rgba(0,90,182,0.08)] transition-shadow">
-                  <div className="flex items-center justify-between mb-4">
-                    <Calendar className="w-10 h-10 text-tertiary p-2 bg-tertiary-fixed rounded-xl" />
-                    <span className="text-xs font-bold text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-md">
-                      TB / ngày
-                    </span>
-                  </div>
-                  <p className="text-on-surface-variant text-sm font-medium">Trung bình mỗi ngày</p>
-                  <h3 className="text-2xl font-black mt-1 text-on-surface">{formatVND(data?.average_daily_spending)}</h3>
+                  <p className="text-on-surface-variant text-sm font-medium">Số dư (Thu - Chi)</p>
+                  <h3 className={`text-2xl font-black mt-1 ${data?.net_balance >= 0 ? 'text-primary' : 'text-error'}`}>
+                    {data?.net_balance > 0 ? '+' : ''}{formatVND(data?.net_balance)}
+                  </h3>
                 </div>
 
                 {/* Danh mục cao nhất */}
                 <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)] border border-transparent hover:shadow-[0_8px_24px_rgba(0,90,182,0.08)] transition-shadow">
                   <div className="flex items-center justify-between mb-4">
-                    <TrendingUp className="w-10 h-10 text-primary p-2 bg-primary-fixed rounded-xl" />
+                    <TrendingUp className="w-10 h-10 text-secondary p-2 bg-secondary-fixed rounded-xl" />
                     {data?.top_category && (
                       <span className="text-xs font-bold text-secondary bg-secondary-fixed px-2 py-1 rounded-md">
-                        Top 1
+                        Top Chi Tiêu
                       </span>
                     )}
                   </div>
@@ -373,14 +380,18 @@ const Dashboard = () => {
             <div className="lg:col-span-2 bg-surface-container-lowest p-5 sm:p-8 rounded-2xl shadow-[0_8px_24px_rgba(25,28,30,0.04)]">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div>
-                  <h4 className="text-lg font-bold text-on-surface">Xu hướng chi tiêu</h4>
+                  <h4 className="text-lg font-bold text-on-surface">Xu hướng thu chi</h4>
                   <p className="text-sm text-on-surface-variant">
-                    Chi tiêu theo ngày ({period === 'today' ? 'hôm nay' : period === 'week' ? '7 ngày qua' : '30 ngày qua'})
+                    Theo ngày ({period === 'today' ? 'hôm nay' : period === 'week' ? 'tuần này' : 'tháng này'})
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-full bg-primary"></span>
+                    <span className="text-sm font-medium text-on-surface-variant">Thu nhập</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-error"></span>
                     <span className="text-sm font-medium text-on-surface-variant">Chi phí</span>
                   </div>
                 </div>
@@ -390,7 +401,7 @@ const Dashboard = () => {
                   <div className="w-8 h-8 border-3 border-primary/30 border-t-primary rounded-full animate-spin" />
                 </div>
               ) : (
-                <AreaChart data={data?.daily_spending} />
+                <AreaChart expenseData={data?.daily_expense} incomeData={data?.daily_income} />
               )}
             </div>
 
